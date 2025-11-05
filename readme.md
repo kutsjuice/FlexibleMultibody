@@ -1,0 +1,1 @@
+Calculation of natural frequencies of parallel robot
