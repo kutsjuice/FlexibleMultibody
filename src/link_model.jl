@@ -1,16 +1,23 @@
 using Gridap
 using GridapGmsh
-
+using Gridap.Geometry
 using SparseArrays
 using LinearAlgebra
 using StaticArrays
-function skew_symmetric(r)
+
+function skew_symmetric(r::VectorValue{3,Float64})
     return SA[
         0.0 -r[3] r[2];
         r[3] 0.0 -r[1];
         -r[2] r[1] 0.0
     ]
 end
+
+struct RBE2Element
+    slave_nodes::Vector{Int}
+    master_coords::VectorValue{3,Float64}
+end
+
 function compute_rbe2_condensation_mat(slave_nodes, node_and_comp_to_dof, node_coords::Vector{VectorValue{3,Float64}}, rbe_coords::VectorValue{3,Float64}, num_dofs_glob)
     num_rbe_dofs = 6
     num_slave_dofs = 0
@@ -41,47 +48,6 @@ function compute_rbe2_condensation_mat(slave_nodes, node_and_comp_to_dof, node_c
     return RBE2_mat
 end
 
-
-
-model = GmshDiscreteModel("link_mesh.msh")
-writevtk(model, "link")
-
-const E = 2.1e5
-const ν = 0.3
-const λ = (E * ν) / ((1 + ν) * (1 - 2 * ν))
-const μ = E / (2 * (1 + ν))
-
-σ(ε) = λ * tr(ε) * one(ε) + 2 * μ * ε
-
-
-reffe = ReferenceFE(lagrangian, VectorValue{3,Float64}, 1)
-V = TestFESpace(model, reffe, conformity=:H1)
-
-g1(x) = VectorValue(0.0, 0.0, 0.0) # boundary condition on the inner face of the left hole – displacement 0.0.
-g2(x) = VectorValue(0.0, 0.0, 0.1) # boundary condition on the inner face of the right hole – displacement -0.1.
-
-
-U = TrialFESpace(V) # create trial space with boundary conditions
-EL_ORDER = 1
-degree = EL_ORDER * 2
-Ω = Triangulation(model)
-dΩ = Measure(Ω, degree)
-
-# neumanntags = []#["loaded"]
-# Γ = BoundaryTriangulation(model,tags=neumanntags)
-# dΓ = Measure(Γ,degree)
-
-
-# f(x) = VectorValue(0.0, 0.0, 0.0);
-
-a(u, v) = ∫(ε(v) ⊙ (σ ∘ ε(u))) * dΩ
-b(v) = 0; #∫( dot(v, f))*dΓ 
-
-
-op = AffineFEOperator(a, b, U, V)
-
-mK = get_matrix(op)
-vF = get_vector(op)
 
 function applydirichelet!(
     mK::AbstractMatrix{<:Number},
@@ -139,8 +105,6 @@ function applydirichelet!(
 
 end
 
-using Gridap.Geometry
-
 function get_nodes_by_tag(model::DiscreteModel, tag::String)::Vector{Int64}
 
 
@@ -167,6 +131,52 @@ function get_nodes_by_tag(model::DiscreteModel, tag::String)::Vector{Int64}
 
 end
 
+function mises(s)
+    return 0.5 * sqrt((s[1, 1] - s[2, 2])^2 + (s[2, 2] - s[3, 3])^2 + (s[3, 3] - s[1, 1])^2 + 6 * (s[2, 3]^2 + s[3, 1]^2 + s[1, 2]^2))
+end
+
+
+model = GmshDiscreteModel("link_mesh.msh")
+writevtk(model, "link")
+
+E = 2.1e5
+ν = 0.3
+λ = (E * ν) / ((1 + ν) * (1 - 2 * ν))
+μ = E / (2 * (1 + ν))
+
+σ(ε) = λ * tr(ε) * one(ε) + 2 * μ * ε
+
+
+reffe = ReferenceFE(lagrangian, VectorValue{3,Float64}, 1)
+V = TestFESpace(model, reffe, conformity=:H1)
+
+g1(x) = VectorValue(0.0, 0.0, 0.0) # boundary condition on the inner face of the left hole – displacement 0.0.
+g2(x) = VectorValue(0.0, 0.0, 0.1) # boundary condition on the inner face of the right hole – displacement -0.1.
+
+
+U = TrialFESpace(V) # create trial space with boundary conditions
+EL_ORDER = 1
+degree = EL_ORDER * 2
+Ω = Triangulation(model)
+dΩ = Measure(Ω, degree)
+
+# neumanntags = []#["loaded"]
+# Γ = BoundaryTriangulation(model,tags=neumanntags)
+# dΓ = Measure(Γ,degree)
+
+
+# f(x) = VectorValue(0.0, 0.0, 0.0);
+
+a(u, v) = ∫(ε(v) ⊙ (σ ∘ ε(u))) * dΩ
+b(v) = 0; #∫( dot(v, f))*dΓ 
+
+
+op = AffineFEOperator(a, b, U, V)
+
+mK = get_matrix(op)
+vF = get_vector(op)
+
+
 left_hole_nodes = get_nodes_by_tag(model, "left_hole")
 right_hole_nodes = get_nodes_by_tag(model, "right_hole")
 
@@ -177,16 +187,12 @@ RBE2_mat = compute_rbe2_condensation_mat(right_hole_nodes, V.metadata.node_and_c
 rbe2_dofs = (size(RBE2_mat, 2) - 5):size(RBE2_mat, 2)
 mK = RBE2_mat' * mK * RBE2_mat
 vF = RBE2_mat' * vF
-applydirichelet!(mK, vF, rbe2_dofs[[1,2,3]], [0,0, -0.1])
+applydirichelet!(mK, vF, rbe2_dofs[[1,2,3, 4, 5, 6]], [0,0, -0.1, 0, 0, 0])
 
 x0 = mK \ vF
 x0 = RBE2_mat * x0
 uh_lin = FEFunction(U, x0)
 
 res_file = "results_new"
-
-function mises(s)
-    return 0.5 * sqrt((s[1, 1] - s[2, 2])^2 + (s[2, 2] - s[3, 3])^2 + (s[3, 3] - s[1, 1])^2 + 6 * (s[2, 3]^2 + s[3, 1]^2 + s[1, 2]^2))
-end
 
 writevtk(Ω, res_file, cellfields=["uh" => uh_lin, "sigma" => σ ∘ ε(uh_lin)])
