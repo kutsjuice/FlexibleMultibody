@@ -241,4 +241,4 @@ uh_lin = FEFunction(U, x0)
 
 # Запись результата
 res_file = "results_new"
-writevtk(Ω, res_file, cellfields=["uh" => uh_lin, "sigma" => σ ∘ ε(uh_lin)])
+writevtk(Triangulation(model), res_file, cellfields=["uh" => uh_lin, "sigma" => σ ∘ ε(uh_lin)])
