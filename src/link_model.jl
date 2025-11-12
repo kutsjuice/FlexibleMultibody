@@ -5,75 +5,6 @@ using SparseArrays
 using LinearAlgebra
 using StaticArrays
 
-function skew_symmetric(r::VectorValue{3,Float64})
-    return SA[
-        0.0 -r[3] r[2];
-        r[3] 0.0 -r[1];
-        -r[2] r[1] 0.0
-    ]
-end
-
-struct RBE2Element
-    slave_nodes::Vector{Int}
-    master_coords::VectorValue{3,Float64}
-end
-
-function compute_rbe2_condensation_mat(
-    rbe2_elements::Vector{RBE2Element},
-    node_and_comp_to_dof::Vector{VectorValue{3,Int32}}, # например, [[1,2,3], [4,5,6], ...]
-    node_coords::Vector{VectorValue{3,Float64}},
-    num_dofs_glob::Int
-)
-    num_rbe_dofs_total = 6 * length(rbe2_elements)
-    num_slave_dofs_total = 0
-
-    for rbe in rbe2_elements
-        for node in rbe.slave_nodes
-            num_slave_dofs_total += length(node_and_comp_to_dof[node])
-        end
-    end
-
-    dofs_glob = 1:num_dofs_glob
-    dofs_slave_all = Vector{Int64}()
-
-    for rbe in rbe2_elements
-        for node in rbe.slave_nodes
-            append!(dofs_slave_all, node_and_comp_to_dof[node])
-        end
-    end
-
-    dofs_indep = setdiff(dofs_glob, dofs_slave_all)
-
-    RBE2_mat = spzeros(num_dofs_glob, num_dofs_glob - num_slave_dofs_total + num_rbe_dofs_total)
-
-    # Просто копируем независимые DOF
-    RBE2_mat[dofs_indep, 1:length(dofs_indep)] = I(length(dofs_indep))
-
-    # Заполняем зависимости для каждого RBE2
-    current_master_dof_start = length(dofs_indep) + 1
-
-    for rbe in rbe2_elements
-        master_coords = rbe.master_coords
-        for slave_node in rbe.slave_nodes
-            if length(node_and_comp_to_dof[slave_node]) != 3
-                error("Each slave node must have 3 DOFs.")
-            end
-
-            r = node_coords[slave_node] - master_coords
-            slave_dofs = node_and_comp_to_dof[slave_node]
-
-            # 3 поступательных DOF master узла
-            RBE2_mat[Vector(slave_dofs), current_master_dof_start : current_master_dof_start + 2] = I(3)
-
-            # 3 вращательных DOF master узла
-            RBE2_mat[Vector(slave_dofs), current_master_dof_start + 3 : current_master_dof_start + 5] = skew_symmetric(r)
-        end
-        current_master_dof_start += 6
-    end
-
-    return RBE2_mat
-end
-
 
 function applydirichelet!(
     mK::AbstractMatrix{<:Number},
@@ -116,7 +47,7 @@ function applydirichelet!(
     dofsvalue::AbstractVector{<:Number}
 )
 
-    for (id,dof) in enumerate(dofs)
+    for (id, dof) in enumerate(dofs)
         mK[dof, dof] = 1
         vF[dof] = dofsvalue[id]
         for k in eachindex(vF)
@@ -128,32 +59,6 @@ function applydirichelet!(
             end
         end
     end
-
-end
-
-function get_nodes_by_tag(model::DiscreteModel, tag::String)::Vector{Int64}
-
-
-    labels = get_face_labeling(model)
-    tag_id = get_tag_from_name(labels, tag)
-
-    dim = 0 # we will look for nodes which has dimension of 0
-
-    dface_to_entity = get_face_entity(labels, dim)
-
-    dface_to_isontag = BitVector(undef, num_faces(labels, dim))
-
-    tag_entities = get_tag_entities(labels, tag)
-
-    for i in eachindex(dface_to_entity)
-        buf = false
-        for entity in tag_entities
-            buf += dface_to_entity[i] == entity
-        end
-        dface_to_isontag[i] = buf
-    end
-
-    return findall(dface_to_isontag)
 
 end
 
@@ -217,11 +122,15 @@ RBE2_mat = compute_rbe2_condensation_mat(
 mK = RBE2_mat' * mK * RBE2_mat
 vF = RBE2_mat' * vF
 
+
 # Граничные условия теперь задаются на DOF master узлов
 # Предположим, что в RBE2_mat первые 6 DOF соответствуют первому RBE2 (левому), следующие 6 — второму (правому)
-left_rbe_dofs = (size(RBE2_mat, 2) - 11):(size(RBE2_mat, 2) - 6) # первые 6 DOF в RBE2_mat (левый RBE2)
-right_rbe_dofs = (size(RBE2_mat, 2) - 5):size(RBE2_mat, 2)      # последние 6 DOF в RBE2_mat (правый RBE2)
-
+left_rbe_dofs = (size(RBE2_mat, 2)-11):(size(RBE2_mat, 2)-6) # первые 6 DOF в RBE2_mat (левый RBE2)
+right_rbe_dofs = (size(RBE2_mat, 2)-5):size(RBE2_mat, 2)      # последние 6 DOF в RBE2_mat (правый RBE2)
+n̂ = size(RBE2_mat, 2)
+n_rbe = 2*6
+n_free = size(RBE2_mat, 2) - n_rbe
+rbe_dofs = [(n_free+1+(i-1)*6:n_free+i*6) for i in 1:2]
 # g1(x) = VectorValue(0.0, 0.0, 0.0) -> фиксируем все 6 DOF левого RBE2
 # g2(x) = VectorValue(0.0, 0.0, 0.1) -> задаем смещение 0.1 по Z на правом RBE2
 
@@ -232,7 +141,7 @@ applydirichelet!(mK, vF, left_rbe_dofs[1:3], zeros(6)[1:3])
 # Устанавливаем смещение: 0 по X, 0 по Y, 0.1 по Z, 0 по вращениям
 disp_vals = [0.0, 0.0, 0.1, 0.0, 0.0, 0.0]
 
-applydirichelet!(mK, vF, right_rbe_dofs,  disp_vals)
+applydirichelet!(mK, vF, right_rbe_dofs, disp_vals)
 
 # Решение
 x0 = mK \ vF
