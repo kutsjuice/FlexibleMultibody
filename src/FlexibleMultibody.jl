@@ -1,6 +1,7 @@
 module FlexibleMultibody
 
 using Rotations, StaticArrays, SparseArrays, Gridap, GridapGmsh, LinearAlgebra, Gmsh
+using Arpack
 using Gridap.Geometry
 
 # Экспортируем основные типы и функции
@@ -9,5 +10,6 @@ export FlexibleComponent, FlexibleInterface, RBEInfo, LinearElasticMaterial
 include("utils.jl")
 include("rbe2.jl")
 include("flexible_body.jl")
-
+include("modal_analysis.jl")
+include("export.jl")
 end

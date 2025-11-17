@@ -23,6 +23,7 @@ function generate_stress_law(material::LinearElasticMaterial)
 end
 mutable struct FlexibleComponent
     model::Gridap.Geometry.UnstructuredDiscreteModel
+    trial::FESpace
     mK::Union{Matrix{Float64},SparseMatrixCSC{Float64,Int64}}
     mM::Union{Matrix{Float64},SparseMatrixCSC{Float64,Int64}}
     mT::SparseMatrixCSC{Float64,Int64}
@@ -84,7 +85,7 @@ function FlexibleComponent(mesh::String, material::LinearElasticMaterial; rbe_in
             rbe_dofs[i]
         )
     end
-    return FlexibleComponent(model, mK, mM, RBE2_mat, interfaces)
+    return FlexibleComponent(model,U, mK, mM, RBE2_mat, interfaces)
 end
 
 

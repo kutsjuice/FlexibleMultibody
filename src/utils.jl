@@ -32,3 +32,23 @@ function get_nodes_by_tag(model::DiscreteModel, tag::String)::Vector{Int64}
     return findall(dface_to_isontag)
 
 end
+
+function applydirichelet!(
+    mK::AbstractMatrix{<:Number},
+    vF::AbstractVector{<:Number},
+    dofs::AbstractVector{<:Integer},
+    dofsvalue::AbstractVector{<:Number}
+)
+    for (id, dof) in enumerate(dofs)
+        mK[dof, dof] = 1
+        vF[dof] = dofsvalue[id]
+        for k in eachindex(vF)
+            if dof != k
+                if mK[dof, k] != 0
+                    vF[k] -= dofsvalue[id] * mK[dof, k]
+                    mK[dof, k] = mK[k, dof] = 0
+                end
+            end
+        end
+    end
+end
