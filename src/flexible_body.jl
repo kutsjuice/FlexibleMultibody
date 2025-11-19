@@ -71,6 +71,7 @@ function FlexibleComponent(mesh::String, material::LinearElasticMaterial; rbe_in
 
     # Преобразуем матрицу и вектор
     mK = RBE2_mat' * mK * RBE2_mat
+    mM = RBE2_mat' * mM * RBE2_mat
 
     n̂ = size(RBE2_mat, 2)
     n_rbe = length(rbe_info) * 6
