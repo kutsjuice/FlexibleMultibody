@@ -16,17 +16,15 @@ f = zeros(size(fl_rod.mK, 1))
 left_interface = fl_rod.interfaces["left_hole"]
 applydirichelet!(fl_rod, left_interface.dofs)
 
-# right_interface = fl_rod.interfaces["right_hole"]
-# disp_vals = [0.0, 0.0, 0.1, 0.0, 0.0, 0.0]
-# applydirichelet!(fl_rod.mK, f, right_interface.dofs, disp_vals)
+
 num_modes = 10
 λ, Φ = eigs( fl_rod.mM, fl_rod.mK; nev=num_modes, which=:LM)
-
-1 ./ λ
+Φ[end-12:end,3]
+sqrt.(1 ./ abs.(λ))
 cellfields = Vector{Pair{String, Vector{Float64}}}(undef, length(λ))
 for (i, λᵢ) in enumerate(λ)
     freq = round( sqrt(1 / abs(λᵢ)) / 2 /pi , digits=2)
-    cellfields[i] = "freq=$(freq)" => Φ[:,i]
+    cellfields[i] = "freq=$(freq)" => real.(Φ[:,i])
 end
 
 write_solution_to_vtk(fl_rod, "eigen_modes", cellfields)

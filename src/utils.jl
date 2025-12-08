@@ -59,14 +59,15 @@ function applydirichelet!(
 	comp::FlexibleComponent,
 	dofs::AbstractVector{<:Integer},
 )
+	penalty = maximum(comp.mK) *1e3
 	for (id, dof) in enumerate(dofs)
-		comp.mK[dof, dof] = 1
-		comp.mM[dof, dof] = 1
-		for k in 1:size(comp.mK, 1)
-			if dof != k
-				comp.mK[dof, k] = comp.mK[k, dof] = 0
-				comp.mM[dof, k] = comp.mM[k, dof] = 0
-			end
-		end
+		comp.mK[dof, dof] += penalty
+		# comp.mM[dof, dof] = 1
+		# for k in 1:size(comp.mK, 1)
+		# 	if dof != k
+		# 		comp.mK[dof, k] = comp.mK[k, dof] = 0
+		# 		# comp.mM[dof, k] = comp.mM[k, dof] = 0
+		# 	end
+		# end
 	end
 end
