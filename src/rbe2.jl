@@ -57,7 +57,7 @@ function compute_rbe2_condensation_mat(
             RBE2_mat[Vector(slave_dofs), current_master_dof_start:current_master_dof_start+2] = I(3)
 
             # 3 вращательных DOF master узла
-            RBE2_mat[Vector(slave_dofs), current_master_dof_start+3:current_master_dof_start+5] = skew_symmetric(r)
+            RBE2_mat[Vector(slave_dofs), current_master_dof_start+3:current_master_dof_start+5] = -skew_symmetric(r)
         end
         current_master_dof_start += 6
     end
